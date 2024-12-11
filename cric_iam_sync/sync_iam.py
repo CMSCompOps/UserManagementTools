@@ -94,8 +94,7 @@ if args.update_users:
 
     # Format timestamp to set user endDate 6 days from now:
     now = datetime.now()
-    end_date = now + relativedelta(days=6)
-    end_time = end_date.isoformat()
+
     for group_name, group in response.items():
         for user in group['users']:
             if user['login'] in inv_user_map:
@@ -176,13 +175,22 @@ if args.update_users:
                 }
                 patch_url = base_iam_url + "scim/Groups/%s" % iam_group_map.get('cms')
                 make_api_request(patch_url, headers, data=json.dumps(body), type='patch')
-
-            if iam_id:
-                # Bump user's end_time
-                user_url = base_iam_url + "iam/account/%s/endTime" % iam_id
-                put_body = {"endTime": end_time}
-                make_api_request(user_url, headers, data=json.dumps(put_body), type='put')
-
+                # Attach CERN person ID to user
+                if user['personid']:
+                    body = {
+                        'prefix': 'hr.cern',
+                        'name': 'cern_person_id',
+                        'value': str(user['personid'])}
+                    patch_url = base_iam_url + "/iam/account/%s/labels" % iam_id
+                    make_api_request(patch_url, headers, data=json.dumps(body), type='put')
+                else:
+                    warning_message = {
+                        'type': 'user_has_no_personid',
+                        'iam_server': base_iam_url,
+                        'cric_server': base_cric_url,
+                        'user_name': user['login'],
+                    }
+                    messages.append(warning_message)
 
 # Get list of existing members to flash groups empty
 iam_group_existing_users_map = {}
@@ -204,6 +212,8 @@ response = requests.get(cric_url, cert=(cric_cert, cric_cert_key), verify='/etc/
 cric_group_map = {}
 for group, details in response.items():
     iam_group_name = 'cms/%s/%s' % (details['role'], details['tag_name'])
+    if details['role'] == 'NULL':
+        iam_group_name = 'cms/%s' % (details['tag_name'])
     if iam_group_name not in iam_group_map:
         warning_message = {
             'type': 'group_not_found',
