@@ -8,7 +8,7 @@ RUN yum upgrade -y \
     && yum clean all \
     && rm -rf /var/cache/yum
 
-RUN yum -y install epel-release oidc-agent openssl python3-pip CERN-CA-certs s-nail
+RUN yum -y install epel-release oidc-agent-cli oidc-agent-desktop oidc-agent-libs oidc-agent-devel openssl python3-pip CERN-CA-certs s-nail
 
 COPY . /src
 WORKDIR /src
