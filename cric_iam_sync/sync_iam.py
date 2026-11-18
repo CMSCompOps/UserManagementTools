@@ -86,6 +86,46 @@ inv_user_map = {v: k for k, v in user_map.items()}
 cric_cert = '/src/certs/criciam.crt.pem'
 cric_cert_key = '/src/certs/criciam.key.pem'
 
+# CERN Grid CA rollover: IAM resolves an account by the (subjectDn, issuerDn) pair, so a
+# certificate issued by the new CERN Grid CA does not match an entry registered under the old one
+# although the subject DN is identical. While certificates from both CAs are in circulation every
+# CERN Grid DN is pushed once per CA, whatever CA CRIC itself stores. Once the old CA is retired
+# remove it from this list and drop its entries from IAM.
+CERN_GRID_CAS = ['CN=CERN Grid Certification Authority,DC=cern,DC=ch',
+                 'CN=CERN Grid Certification Authority 2,DC=cern,DC=ch']
+
+
+def to_rfc2253(name, sep):
+    """
+        CRIC stores DNs slash-separated, root first ('/DC=ch/DC=cern/OU=.../CN=...') and CAs
+        comma-separated, root first ('DC=ch,DC=cern,CN=...'). IAM wants both leaf first and
+        comma-separated ('CN=...,DC=cern,DC=ch').
+    """
+    return ','.join(reversed(name.strip(sep).split(sep)))
+
+
+def iam_certificates(sslprofiles):
+    """
+        Translate the CRIC sslprofiles of a user into the IAM certificate list.
+        :return: list of {subjectDn, issuerDn, display}, without duplicates, CRIC order kept
+    """
+    certificates = []
+    seen = set()
+    for cert in sslprofiles:
+        dn = to_rfc2253(cert['dn'], '/')
+        ca = cert.get('ca') or ''
+        # a few CRIC profiles carry the CA slash-separated, like the DN
+        ca = to_rfc2253(ca, '/' if ca.startswith('/') else ',')
+        if not ca:
+            ca = CERN_GRID_CAS[-1] if 'DC=cern' in cert['dn'] else 'unnknown'
+        issuers = CERN_GRID_CAS if ca in CERN_GRID_CAS else [ca]
+        for issuer in issuers:
+            if (dn, issuer) in seen:
+                continue
+            seen.add((dn, issuer))
+            certificates.append({"subjectDn": dn, "issuerDn": issuer, "display": 'cric-cert'})
+    return certificates
+
 
 if args.update_users:
     # Sync users from cric
@@ -98,13 +138,7 @@ if args.update_users:
     for group_name, group in response.items():
         for user in group['users']:
             if user['login'] in inv_user_map:
-                certificates = []
-                for cert in user['sslprofiles']:
-                    ca =  ','.join(list(reversed(cert['ca'].split(',')))) 
-                    if not ca or ca == 'CERN Certification Authority,DC=cern,DC=ch':
-                        ca = 'CN=CERN Grid Certification Authority,DC=cern,DC=ch' if 'DC=cern' in cert['dn'] else 'unnknown'
-                    dn = ','.join(list(reversed(cert['dn'].strip('/').split('/'))))
-                    certificates.append({"subjectDn": dn, "issuerDn": ca, "display": 'cric-cert'} )
+                certificates = iam_certificates(user['sslprofiles'])
                 patch_body = {
                     "schemas": [
                         "urn:ietf:params:scim:api:messages:2.0:PatchOp"
@@ -124,13 +158,7 @@ if args.update_users:
                 user_url = base_iam_url + "scim/Users/%s" % iam_id
                 make_api_request(user_url, headers, data=json.dumps(patch_body), type='patch')
             else:
-                certificates = []
-                for cert in user['sslprofiles']:
-                    ca = ','.join(list(reversed(cert['ca'].split(','))))
-                    if not ca or ca == 'CN=CERN Certification Authority,DC=cern,DC=ch':
-                        ca = 'CN=CERN Grid Certification Authority,DC=cern,DC=ch' if 'DC=cern' in cert['dn'] else 'unnknown'
-                    dn = ','.join(list(reversed(cert['dn'].strip('/').split('/'))))
-                    certificates.append({"subjectDn": dn, "issuerDn": ca , "display": 'cric-cert'})
+                certificates = iam_certificates(user['sslprofiles'])
                 body = {
                         "schemas": [
                             "urn:ietf:params:scim:schemas:core:2.0:User",
