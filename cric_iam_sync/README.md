@@ -12,6 +12,7 @@ The cron runs every 3 hours and does the following:
 * Syncs all CRIC users fropm the `CMS_USERS_autosynced` CRIC group to IAM. This CRIC group is always mirroring the `cms-authorized-users` CERN e-group
     * If a user doesn't yet exist in IAM (based on their CERN username) the user is created and added to the default `cms` group
     * For all users, their certificates are being updated with any new certificates found in CRIC.
+    * CERN Grid CA rollover: IAM matches a certificate on both subject DN and issuer DN, so while certificates from both `CERN Grid Certification Authority` and `CERN Grid Certification Authority 2` are in circulation every CERN Grid DN is pushed once per CA, regardless of which CA CRIC stores. Once the old CA is retired, remove it from `CERN_GRID_CAS` in the script and remove its entries from IAM.
 
 * The cron job sets the expiration date of IAM users 5 days in the future. If a user is removed from CRIC, they will be disabled in IAM after 5 days. The lifecycle management of IAM will then delete the account after it has been disabled for a year.
 
