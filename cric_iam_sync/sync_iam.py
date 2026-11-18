@@ -94,6 +94,12 @@ cric_cert_key = '/src/certs/criciam.key.pem'
 CERN_GRID_CAS = ['CN=CERN Grid Certification Authority,DC=cern,DC=ch',
                  'CN=CERN Grid Certification Authority 2,DC=cern,DC=ch']
 
+# GEANT TCS replaced its CAs in 2025 keeping the subject DNs. The old ones no longer issue and
+# are out of the IGTF distribution, but CRIC still stores them for those DNs.
+GEANT_TCS_RETIRED_CAS = ['CN=GEANT eScience Personal CA 4,O=GEANT Vereniging,C=NL',
+                         'CN=GEANT TCS Authentication RSA CA 4B,O=GEANT Vereniging,C=NL']
+GEANT_TCS_CA = 'CN=GEANT TCS Authentication RSA CA 5,O=GEANT Vereniging,C=NL'
+
 
 def to_rfc2253(name, sep):
     """
@@ -118,6 +124,8 @@ def iam_certificates(sslprofiles):
         ca = to_rfc2253(ca, '/' if ca.startswith('/') else ',')
         if not ca:
             ca = CERN_GRID_CAS[-1] if 'DC=cern' in cert['dn'] else 'unnknown'
+        if ca in GEANT_TCS_RETIRED_CAS:
+            ca = GEANT_TCS_CA
         issuers = CERN_GRID_CAS if ca in CERN_GRID_CAS else [ca]
         for issuer in issuers:
             if (dn, issuer) in seen:
